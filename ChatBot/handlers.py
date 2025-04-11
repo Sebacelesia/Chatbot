@@ -9,8 +9,10 @@ from ai_cliente import generar_respuesta_ai
 import json
 import os
 import openai
+import logging
 
 contadores = {}
+logger = logging.getLogger(__name__)
 
 def get_weather(location: str) -> str:
     return obtener_clima_por_ciudad(location)
@@ -24,6 +26,33 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "¡Hola! Soy un bot con inteligencia artificial. Hablame y trataré de ayudarte.",
         reply_markup=ReplyKeyboardRemove()
     )
+
+def procesar_llamadas_de_herramientas(tool_calls):
+    tool_messages = []
+
+    funciones_disponibles = {
+        "get_weather": lambda args: get_weather(**args),
+        "get_count": lambda args: get_count(args["user_id"])
+    }
+
+    for tool_call in tool_calls:
+        try:
+            function_name = tool_call.function.name
+            arguments = json.loads(tool_call.function.arguments)
+            funcion = funciones_disponibles.get(function_name)
+            result = funcion(arguments) if funcion else f"La función {function_name} no está implementada."
+        except json.JSONDecodeError:
+            result = "Error al interpretar los argumentos de la herramienta."
+        except Exception as e:
+            result = f"Error inesperado al ejecutar la herramienta: {e}"
+
+        tool_messages.append({
+            "role": "tool",
+            "tool_call_id": tool_call.id,
+            "content": result
+        })
+
+    return tool_messages
 
 async def manejar_mensaje(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -40,29 +69,7 @@ async def manejar_mensaje(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = response.choices[0].message
 
         if message.tool_calls:
-            tool_messages = []
-
-            funciones_disponibles = {
-                "get_weather": lambda args: get_weather(**args),
-                "get_count": lambda args: get_count(args["user_id"])
-            }
-
-            for tool_call in message.tool_calls:
-                try:
-                    function_name = tool_call.function.name
-                    arguments = json.loads(tool_call.function.arguments)
-                    funcion = funciones_disponibles.get(function_name)
-                    result = funcion(arguments) if funcion else f"La función {function_name} no está implementada."
-                except json.JSONDecodeError:
-                    result = "Error al interpretar los argumentos de la herramienta."
-                except Exception as e:
-                    result = f" Error inesperado al ejecutar la herramienta: {e}"
-
-                tool_messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "content": result
-                })
+            tool_messages = procesar_llamadas_de_herramientas(message.tool_calls)
 
             second_response = generar_respuesta_ai(
                 texto, user_id, tool_calls=message.tool_calls, tool_messages=tool_messages
@@ -76,8 +83,8 @@ async def manejar_mensaje(update: Update, context: ContextTypes.DEFAULT_TYPE):
             registrar_conversacion(user_id, texto, reply)
 
     except openai.OpenAIError as e:
-        print("Error con la API de Deepseek:", e)
+        logger.error("❌ Error con la API de Deepseek:", exc_info=True)
         await update.message.reply_text("Ocurrió un error con la inteligencia artificial.")
     except Exception as e:
-        print("Error inesperado:", e)
+        logger.error("❌ Error inesperado:", exc_info=True)
         await update.message.reply_text("Ocurrió un error inesperado.")
