@@ -1,4 +1,3 @@
-# handlers.py
 from telegram import Update, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 from clima import obtener_clima_por_ciudad
@@ -83,8 +82,8 @@ async def manejar_mensaje(update: Update, context: ContextTypes.DEFAULT_TYPE):
             registrar_conversacion(user_id, texto, reply)
 
     except openai.OpenAIError as e:
-        logger.error("❌ Error con la API de Deepseek:", exc_info=True)
+        logger.error("Error con la API de Deepseek:", exc_info=True)
         await update.message.reply_text("Ocurrió un error con la inteligencia artificial.")
     except Exception as e:
-        logger.error("❌ Error inesperado:", exc_info=True)
+        logger.error("Error inesperado:", exc_info=True)
         await update.message.reply_text("Ocurrió un error inesperado.")
